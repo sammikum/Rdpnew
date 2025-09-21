@@ -1,0 +1,210 @@
+// index.js - Cloudflare Worker module
+// Compatibility date - set to today's date (change if you want)
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    const { pathname } = url;
+
+    // OpenAPI spec (served at /openapi.json)
+    const openapi = {
+      openapi: "3.0.1",
+      info: {
+        title: "DeepSeek (via OpenRouter) Chat Proxy",
+        version: "1.0.0",
+        description: "Cloudflare Worker proxy to OpenRouter -> DeepSeek. Supports include_reasoning."
+      },
+      servers: [{ url: "/" }],
+      paths: {
+        "/api/chat": {
+          post: {
+            summary: "Send chat messages to a DeepSeek model (via OpenRouter)",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      model: { type: "string", example: "deepseek/deepseek-chat-v3:free" },
+                      input: { type: "string", example: "Explain quicksort briefly." },
+                      messages: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            role: { type: "string", enum: ["system","user","assistant"] },
+                            content: { type: "string" }
+                          }
+                        }
+                      },
+                      include_reasoning: { type: "boolean", description: "Return reasoning tokens if the model provides them", default: true }
+                    }
+                  }
+                }
+              }
+            },
+            responses: {
+              "200": {
+                description: "Proxy response with a normalized structure",
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "object",
+                      properties: {
+                        id: { type: "string" },
+                        model: { type: "string" },
+                        provider: { type: "string" },
+                        usage: { type: "object" },
+                        choices: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              role: { type: "string" },
+                              content: { type: "string" },
+                              reasoning: { type: ["string","object","null"] },
+                              finish_reason: { type: "string" },
+                              index: { type: "integer" }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            security: [{ bearerAuth: [] }]
+          }
+        }
+      },
+      components: {
+        securitySchemes: {
+          bearerAuth: { type: "http", scheme: "bearer" }
+        }
+      }
+    };
+
+    // Swagger UI HTML (serves swagger UI pointing at /openapi.json)
+    const swaggerHtml = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>API docs - DeepSeek Proxy</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <link href="https://unpkg.com/swagger-ui-dist@4/swagger-ui.css" rel="stylesheet">
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@4/swagger-ui-bundle.js"></script>
+    <script>
+      // Auto-detect base URL (works on workers.dev or custom domain)
+      const base = window.location.origin;
+      SwaggerUIBundle({
+        url: base + '/openapi.json',
+        dom_id: '#swagger-ui',
+        presets: [SwaggerUIBundle.presets.apis],
+        layout: "BaseLayout"
+      });
+    </script>
+  </body>
+</html>`;
+
+    // Route: OpenAPI JSON
+    if (request.method === "GET" && pathname === "/openapi.json") {
+      return new Response(JSON.stringify(openapi), {
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    // Route: Swagger UI
+    if (request.method === "GET" && pathname === "/") {
+      return new Response(swaggerHtml, {
+        headers: { "Content-Type": "text/html; charset=utf-8" }
+      });
+    }
+
+    // Route: API proxy -> OpenRouter chat completions
+    if (request.method === "POST" && pathname === "/api/chat") {
+      // Ensure API key present (set as a secret: OPENROUTER_API_KEY)
+      const OR_KEY = env.OPENROUTER_API_KEY;
+      if (!OR_KEY) {
+        return new Response(JSON.stringify({ error: "OPENROUTER_API_KEY not set in Worker environment" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+
+      let body;
+      try {
+        body = await request.json();
+      } catch (err) {
+        return new Response(JSON.stringify({ error: "invalid JSON body" }), { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+
+      // Accept either messages[] or a shorthand input string
+      const model = body.model || "deepseek/deepseek-chat-v3:free";
+      const messages = body.messages || [{ role: "user", content: body.input || "" }];
+      const include_reasoning = (body.include_reasoning === undefined) ? true : !!body.include_reasoning;
+
+      const payload = {
+        model,
+        messages,
+        include_reasoning,
+        stream: false
+      };
+
+      // Call OpenRouter
+      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer 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`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      // Pass through non-JSON error
+      const text = await resp.text();
+      try {
+        const orJson = JSON.parse(text);
+
+        // Normalize to a compact shape (includes reasoning if present)
+        const normalized = {
+          id: orJson.id ?? null,
+          model: orJson.model ?? model,
+          provider: orJson.provider ?? null,
+          usage: orJson.usage ?? null,
+          choices: (orJson.choices || []).map(c => {
+            const msg = c.message || {};
+            // some providers put reasoning inside message.reasoning or message.reasoning_content
+            const reasoning = msg.reasoning ?? msg.reasoning_content ?? null;
+            return {
+              role: msg.role ?? null,
+              content: msg.content ?? null,
+              reasoning,
+              finish_reason: c.finish_reason ?? null,
+              index: c.index ?? null
+            };
+          })
+        };
+
+        return new Response(JSON.stringify(normalized), {
+          headers: { "Content-Type": "application/json" }
+        });
+      } catch (e) {
+        // return raw text if not JSON
+        return new Response(text, { status: resp.status, headers: { "Content-Type": "text/plain" } });
+      }
+    }
+
+    // default: tiny landing
+    if (request.method === "GET" && (pathname === "/" || pathname === "")) {
+      return new Response("DeepSeek proxy worker. Visit /docs for Swagger UI.", {
+        headers: { "Content-Type": "text/plain" }
+      });
+    }
+
+    return new Response("Not found", { status: 404 });
+  }
+};
