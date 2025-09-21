@@ -8,7 +8,7 @@ jobs:
   build:
     name: Start Building...
     runs-on: windows-latest
-    timeout-minutes: 350  # Increased time limit
+    timeout-minutes: 360  # Increased time limit
     
     steps:
       - name: Direct Avica Setup
