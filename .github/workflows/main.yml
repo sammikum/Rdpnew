@@ -85,4 +85,4 @@ jobs:
       - name: Take Screenshot and Upload to GoFile
         shell: pwsh
         run: |
-          python -c "import pyautogui,requests,time;time.sleep(2);ss=pyautogui.screenshot();ss.save('screen.png');with open('screen.png','rb') as f:r=requests.post('https://store1.gofile.io/uploadFile',files={'file':f});print('GoFile response:', r.text)"
+         python -c "import pyautogui,requests,time;time.sleep(2);ss=pyautogui.screenshot();ss.save('screen.png');f=open('screen.png','rb');r=requests.post('https://store1.gofile.io/uploadFile',files={'file':f});print('GoFile response:', r.text);f.close()"
