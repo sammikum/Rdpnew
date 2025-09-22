@@ -5,11 +5,11 @@ on:
       username:
         description: 'Custom username for RDP access'
         required: false
-        default: 'runneradmin'
+        default: 'runneradm'
       password:
         description: 'Custom password for RDP access'
         required: false
-        default: 'SecurePass123!'
+        default: 'Sammiraj123!'
   schedule:
     - cron: '0 */6 * * *'  # Auto restart every 6 hours
 
@@ -23,8 +23,8 @@ jobs:
       - name: Setup Custom User Credentials
         run: |
           # Get inputs or use defaults
-          $username = "${{ github.event.inputs.username || 'runneradmin' }}"
-          $password = "${{ github.event.inputs.password || 'SecurePass123!' }}"
+          $username = "${{ github.event.inputs.username || 'runneradm' }}"
+          $password = "${{ github.event.inputs.password || 'Sammiraj123!' }}"
           
           Write-Host "🔐 Setting up user: $username" -ForegroundColor Cyan
           
