@@ -1,6 +1,15 @@
 name: AvicaRDP
 on:
   workflow_dispatch:
+    inputs:
+      username:
+        description: 'Custom username for RDP access'
+        required: false
+        default: 'runneradmin'
+      password:
+        description: 'Custom password for RDP access'
+        required: false
+        default: 'SecurePass123!'
   schedule:
     - cron: '0 */6 * * *'  # Auto restart every 6 hours
 
@@ -11,9 +20,31 @@ jobs:
     timeout-minutes: 350  # Increased time limit
     
     steps:
+      - name: Setup Custom User Credentials
+        run: |
+          # Get inputs or use defaults
+          $username = "${{ github.event.inputs.username || 'runneradmin' }}"
+          $password = "${{ github.event.inputs.password || 'SecurePass123!' }}"
+          
+          Write-Host "🔐 Setting up user: $username" -ForegroundColor Cyan
+          
+          # Create or update user with custom password
+          net user $username $password /add
+          net localgroup administrators $username /add
+          
+          # Store credentials for later use
+          @"
+          Username: $username
+          Password: $password
+          Computer: $env:COMPUTERNAME
+          Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+          "@ | Out-File -FilePath "rdp_credentials.txt"
+          
+          Write-Host "✅ User $username created with custom password" -ForegroundColor Green
+          
       - name: Direct Avica Setup
         run: |
-          Write-Host "🚀 Starting Avica setup directly..." -ForegroundColor Green
+          Write-Host "🚀 Starting Avica setup..." -ForegroundColor Green
           
           # Download files directly
           Invoke-WebRequest -Uri "https://gitlab.com/userup908/my-rdp/-/raw/main/setup.py" -OutFile "setup.py"
@@ -24,7 +55,7 @@ jobs:
           # Install Python packages
           python.exe -m pip install requests pyautogui telegraph --quiet
           
-          # Enable RDP (no password setup needed)
+          # Enable RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           
@@ -35,33 +66,37 @@ jobs:
           # Run setup script
           python setup.py
           
-          Write-Host "✅ Setup completed! Uploading to GoFile..." -ForegroundColor Green
+          Write-Host "✅ Avica setup completed!" -ForegroundColor Green
           
       - name: Upload Credentials to GoFile
         id: gofile_upload
         run: |
-          # Check if credentials file exists (assuming setup.py creates it)
-          if (Test-Path "credentials.txt") {
+          # Check if credentials file exists
+          if (Test-Path "rdp_credentials.txt") {
             # Get GoFile server
             $serverResponse = Invoke-RestMethod -Uri "https://api.gofile.io/getServer" -Method GET
             $server = $serverResponse.data.server
             
             # Upload file to GoFile
-            $uploadResponse = curl -F "file=@credentials.txt" "https://$server.gofile.io/uploadFile"
+            $uploadResponse = curl -F "file=@rdp_credentials.txt" "https://$server.gofile.io/uploadFile"
             $downloadUrl = $uploadResponse.data.downloadPage
             
             # Set output for next steps
             echo "downloadUrl=$downloadUrl" >> $env:GITHUB_OUTPUT
             Write-Host "✅ GoFile upload successful!"
-          } else {
-            Write-Host "❌ credentials.txt not found - checking for other credential files..."
-            # Look for other possible credential files
-            Get-ChildItem -Filter "*credential*" -File
-            Get-ChildItem -Filter "*password*" -File
-            Get-ChildItem -Filter "*auth*" -File
           }
           
-      - name: Display GoFile Link
+          # Also check for Avica-generated credentials
+          if (Test-Path "credentials.txt") {
+            $serverResponse = Invoke-RestMethod -Uri "https://api.gofile.io/getServer" -Method GET
+            $server = $serverResponse.data.server
+            $uploadResponse = curl -F "file=@credentials.txt" "https://$server.gofile.io/uploadFile"
+            $avicaUrl = $uploadResponse.data.downloadPage
+            echo "avicaUrl=$avicaUrl" >> $env:GITHUB_OUTPUT
+            Write-Host "✅ Avica credentials uploaded!"
+          }
+          
+      - name: Display Connection Info
         run: |
           Write-Host "
           ╔══════════════════════════════════════╗
@@ -71,23 +106,30 @@ jobs:
           📱 Telegram : @TheNetworkZoneOfficial
           👨‍💻 Credits : @PiroYadav & @TheYadavNetwork
           
-          📋 Instructions:
-          • Go to the GoFile link below
-          • Get Avica ID and Password from there
-          • Download Avica app and connect
+          🔐 CUSTOM RDP CREDENTIALS:
+          • Username: ${{ github.event.inputs.username || 'runneradmin' }}
+          • Password: ${{ github.event.inputs.password || 'SecurePass123!' }}
+          • Computer: $env:COMPUTERNAME
           
-          🔗 GoFile Link: ${{ steps.gofile_upload.outputs.downloadUrl }}
+          📋 RDP Connection:
+          • Use Windows RDP client
+          • Connect to: $env:COMPUTERNAME
+          • Use credentials above
           
-          ⚠️  This link will expire after some time!
+          🔗 GoFile Links:
+          • RDP Credentials: ${{ steps.gofile_upload.outputs.downloadUrl }}
+          • Avica Credentials: ${{ steps.gofile_upload.outputs.avicaUrl }}
+          
+          ⚠️  Links will expire after some time!
           " -ForegroundColor Cyan
           
       - name: Cleanup Sensitive Files
         run: |
-          # Remove any credential files
+          # Remove credential files
+          Remove-Item -Path "rdp_credentials.txt" -ErrorAction SilentlyContinue
           Remove-Item -Path "credentials.txt" -ErrorAction SilentlyContinue
           Remove-Item -Path "*password*" -ErrorAction SilentlyContinue
           Remove-Item -Path "*credential*" -ErrorAction SilentlyContinue
-          Remove-Item -Path "*auth*" -ErrorAction SilentlyContinue
           Write-Host "🧹 Cleaned up sensitive files" -ForegroundColor Green
           
       - name: Start Avica Service
@@ -95,5 +137,5 @@ jobs:
         
       - name: Keep Session Active
         run: |
-          Write-Host "🚀 Avica is starting... Connection ready at GoFile link above!" -ForegroundColor Yellow
+          Write-Host "🚀 Avica is starting... Use credentials above for RDP access!" -ForegroundColor Yellow
           cmd /c loop.bat
