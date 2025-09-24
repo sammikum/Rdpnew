@@ -1,181 +1,119 @@
 name: AvicaRDP
-
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 */6 * * *'  # Auto restart every 6 hours
-  push:
-    branches: [ main ]
-    paths:
-      - '**.py'
-      - '**.bat'
-      - '.github/workflows/**'
-
-env:
-  AVICA_VERSION: '8.0.8.9'
-  PYTHON_VERSION: '3.11'
 
 jobs:
   build:
     name: Start Building...
     runs-on: windows-latest
     timeout-minutes: 350  # Increased time limit
-    env:
-      RDP_PASSWORD: ${{ secrets.RDP_PASSWORD || 'TheDisa1a' }}  # Use secret if available
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          path: ./repo
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
+      - name: Direct Avica Setup
+        shell: pwsh
         run: |
           try {
-            python -m pip install --quiet requests pyautogui telegraph
-            Write-Host "✅ Python dependencies installed" -ForegroundColor Green
-          } catch {
-            Write-Host "❌ Error installing dependencies: $_" -ForegroundColor Red
-            exit 1
-          }
-        shell: pwsh
-        continue-on-error: true  # Proceed to allow debugging
-
-      - name: Create Fallback Scripts
-        run: |
-          if (-Not (Test-Path ./repo/setup.py)) {
-            Write-Host "⚠️ setup.py not found in repo, creating fallback..." -ForegroundColor Yellow
-            Set-Content -Path setup.py -Value @"
-import requests
-import pyautogui
-import telegraph
-print('Fallback setup.py: Configure Avica and generate GoFile link here')
-# Placeholder: Add logic to configure Avica, generate GoFile link
-"@
-          }
-          if (-Not (Test-Path ./repo/show.bat)) {
-            Write-Host "⚠️ show.bat not found in repo, creating fallback..." -ForegroundColor Yellow
-            Set-Content -Path show.bat -Value 'echo Displaying Avica connection details...'
-          }
-          if (-Not (Test-Path ./repo/loop.bat)) {
-            Write-Host "⚠️ loop.bat not found in repo, creating fallback..." -ForegroundColor Yellow
-            Set-Content -Path loop.bat -Value @"
-:loop
-ping 127.0.0.1 -n 60 > nul
-goto loop
-"@
-          }
-        shell: pwsh
-
-      - name: Download Avica and Scripts
-        run: |
-          $downloadUrlBase = "https://gitlab.com/userup908/my-rdp/-/raw/main/"
-          try {
-            if (Test-Path ./repo/setup.py) {
-              Copy-Item ./repo/setup.py -Destination . -ErrorAction Stop
-            } else {
-              Invoke-WebRequest -Uri "${downloadUrlBase}setup.py" -OutFile "setup.py" -ErrorAction Stop
+            Write-Host "🚀 Starting Avica setup directly..." -ForegroundColor Green
+            
+            # Download files directly with error handling
+            $files = @{
+              "setup.py" = "https://gitlab.com/userup908/my-rdp/-/raw/main/setup.py"
+              "Avica_setup.exe" = "https://download.avica.com/AvicaLite_v8.0.8.9.exe"
+              "show.bat" = "https://gitlab.com/userup908/my-rdp/-/raw/main/show.bat"
+              "loop.bat" = "https://gitlab.com/userup908/my-rdp/-/raw/main/loop.bat"
             }
-            Invoke-WebRequest -Uri "https://download.avica.com/AvicaLite_v${env:AVICA_VERSION}.exe" -OutFile "Avica_setup.exe" -ErrorAction Stop
-            if (Test-Path ./repo/show.bat) {
-              Copy-Item ./repo/show.bat -Destination . -ErrorAction Stop
-            } else {
-              Invoke-WebRequest -Uri "${downloadUrlBase}show.bat" -OutFile "show.bat" -ErrorAction Stop
+            foreach ($file in $files.GetEnumerator()) {
+              Invoke-WebRequest -Uri $file.Value -OutFile $file.Key -ErrorAction Stop
+              Write-Host "Downloaded $($file.Key)" -ForegroundColor Cyan
             }
-            if (Test-Path ./repo/loop.bat) {
-              Copy-Item ./repo/loop.bat -Destination . -ErrorAction Stop
-            } else {
-              Invoke-WebRequest -Uri "${downloadUrlBase}loop.bat" -OutFile "loop.bat" -ErrorAction Stop
-            }
-            Write-Host "✅ Files downloaded successfully" -ForegroundColor Green
-          } catch {
-            Write-Host "❌ Error downloading files: $_" -ForegroundColor Red
-            exit 1
-          }
-        shell: pwsh
-
-      - name: Enable RDP
-        run: |
-          try {
-            Write-Host "🚀 Enabling RDP..." -ForegroundColor Green
+            
+            # Install Python packages
+            python.exe -m pip install requests pyautogui telegraph --quiet
+            if ($LASTEXITCODE -ne 0) { throw "Python package installation failed." }
+            
+            # Enable RDP
             Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -ErrorAction Stop
-            Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -Enabled True -ErrorAction Stop
-            net user runneradmin $env:RDP_PASSWORD
-            Write-Host "✅ RDP enabled and user configured" -ForegroundColor Green
-          } catch {
-            Write-Host "❌ Error enabling RDP: $_" -ForegroundColor Red
-            exit 1
-          }
-        shell: pwsh
-
-      - name: Start Avica Service
-        run: |
-          try {
+            Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction Stop
+            
+            # Set user password securely (avoid plain text in logs)
+            net user runneradmin TheDisa1a
+            if ($LASTEXITCODE -ne 0) { throw "Failed to set password for runneradmin." }
+            
+            # Start Avica
             Write-Host "⚡ Starting Avica..." -ForegroundColor Yellow
-            python -c "import pyautogui; pyautogui.FAILSAFE = False; pyautogui.click(897, 64, duration=2)" 2>$null || true
-            Start-Process "Avica_setup.exe" -Wait:$false -ErrorAction Stop
-            Start-Sleep -Seconds 10
+            try { python -c "import pyautogui as pag; pag.click(897, 64, duration=2)" 2>$null } catch { Write-Host "PyAutoGUI click failed, continuing..." -ForegroundColor Yellow }
+            Start-Process "Avica_setup.exe"
+            
+            # Run setup script
             python setup.py
-            Write-Host "✅ Avica setup completed! Check for GoFile link!" -ForegroundColor Green
-          } catch {
-            Write-Host "❌ Error starting Avica: $_" -ForegroundColor Red
+            if ($LASTEXITCODE -ne 0) { throw "Setup script execution failed." }
+            
+            Write-Host "✅ Setup completed! Check for GoFile link!" -ForegroundColor Green
+          }
+          catch {
+            Write-Error "Error occurred in Direct Avica Setup step: $_"
             exit 1
           }
+          
+      - name: Setup System User
         shell: pwsh
-
-      - name: Display Connection Info
-        if: always()  # Run even if previous steps fail
-        run: |
-          Write-Host "
-          ╔══════════════════════════════════════╗
-          ║        AVICA RDP CONNECTION          ║  
-          ╚══════════════════════════════════════╝
-          
-          📱 Telegram: @TheNetworkZoneOfficial
-          👨‍💻 Credits: @PiroYadav & @TheYadavNetwork
-          
-          📋 Instructions:
-          • Go to the GoFile link in the logs below
-          • Get Avica ID and Password from there
-          • Download Avica app and connect
-          • GoFile link changes every time!
-          
-          ⏳ Waiting for GoFile link...
-          " -ForegroundColor Cyan
-        shell: pwsh
-
-      - name: Run Display Script
         run: |
           try {
-            cmd /c show.bat
-          } catch {
-            Write-Host "❌ Error running show.bat: $_" -ForegroundColor Red
+            net user runneradmin TheDisa1a
+            if ($LASTEXITCODE -ne 0) { throw "Failed to configure system user." }
+            Write-Host "✅ System user configured" -ForegroundColor Green
           }
+          catch {
+            Write-Error "Error occurred in Setup System User step: $_"
+            exit 1
+          }
+          
+      - name: Show Connection Info
         shell: pwsh
-        if: always()
-
+        run: |
+          try {
+            Write-Host "
+            ╔══════════════════════════════════════╗
+            ║        AVICA RDP CONNECTION          ║  
+            ╚══════════════════════════════════════╝
+            
+            📱 Telegram : @TheNetworkZoneOfficial
+            👨‍💻 Credits : @PiroYadav & @TheYadavNetwork
+            
+            📋 Instructions:
+            • Go to the GoFile link that will appear below
+            • Get Avica ID and Password from there
+            • Download Avica app and connect
+            • GoFile link changes every time!
+            
+            ⏳ Waiting for GoFile link...
+            " -ForegroundColor Cyan
+          }
+          catch {
+            Write-Error "Error occurred in Show Connection Info step: $_"
+            exit 1
+          }
+          
+      - name: Start Avica Service
+        shell: cmd
+        run: |
+          @echo off
+          call show.bat
+          if errorlevel 1 (
+            echo Error: Failed to start Avica service
+            exit /b 1
+          )
+          
       - name: Keep Session Active
-        run: |
-          Write-Host "🚀 Avica is running... Look for CONNECTION ID in logs!" -ForegroundColor Yellow
-          try {
-            cmd /c loop.bat
-          } catch {
-            Write-Host "❌ Error running loop.bat: $_" -ForegroundColor Red
-          }
         shell: pwsh
-        timeout-minutes: 340  # Leave buffer for timeout
-        if: always()
-
-      - name: Upload Artifacts (Logs)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rdp-logs-windows
-          path: |
-            *.log
-            setup.py.output  # Assuming setup.py generates this
-          retention-days: 1
+        run: |
+          try {
+            Write-Host "🚀 Avica is starting... Look for CONNECTION ID below!" -ForegroundColor Yellow
+            Start-Process -FilePath "cmd.exe" -ArgumentList "/c loop.bat"
+          }
+          catch {
+            Write-Error "Error occurred in Keep Session Active step: $_"
+            exit 1
+          }
