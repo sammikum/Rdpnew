@@ -32,23 +32,13 @@ jobs:
     steps:
       - id: set-matrix
         run: |
-          MATRIX='[
-            {
-              "os": "${{ github.event.inputs.os_type || 'windows-latest' }}",
-              "python-version": ["${{ env.PYTHON_VERSION }}"]
-            }
-          ]'
-          if [ "${{ github.event.inputs.os_type }}" = "ubuntu-latest" ]; then
-            MATRIX='[
-              {
-                "os": "ubuntu-latest",
-                "python-version": ["${{ env.PYTHON_VERSION }}"]
-              }
-            ]'
+          OS="${{ github.event.inputs.os_type || 'windows-latest' }}"
+          if [ "$OS" = "ubuntu-latest" ]; then
+            MATRIX='{"os": "ubuntu-latest", "python-version": ["3.11"]}'
+          else
+            MATRIX='{"os": "windows-latest", "python-version": ["3.11"]}'
           fi
-          echo "matrix<<EOF" >> $GITHUB_OUTPUT
-          echo "$MATRIX" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
   build:
     needs: setup-matrix
