@@ -17,8 +17,8 @@ jobs:
       - name: Download and install Avica silently
         shell: pwsh
         run: |
-          $dest = "$env:TEMP\AvicaSetup.exe"
-          Invoke-WebRequest -Uri "https://download.avica.com/AvicaLite_latest.exe" -OutFile $dest -UseBasicParsing -ErrorAction Stop
+          $dest = "$env:TEMP\AvicaLite_v8.0.8.9.exe"
+          Invoke-WebRequest -Uri "https://download.avica.com/AvicaLite_v8.0.8.9.exe" -OutFile $dest -UseBasicParsing -ErrorAction Stop
           if ((Test-Path $dest) -and ((Get-Item $dest).Length -gt 5MB)) {
             Write-Host "Avica installer downloaded."
           } else {
@@ -47,7 +47,7 @@ jobs:
           # Download your button images here or ensure they are included in repo
       - name: Download automation script
         run: |
-          Invoke-WebRequest -Uri "https://github.com/sammikum/Rdpnew/blob/main/script.py"
+          Invoke-WebRequest -Uri "https://github.com/sammikum/Rdpnew/blob/main/script.py" -OutFile "script.py"
       - name: Run automation script
         run: python automate_avica.py
       - name: Show connection info
