@@ -46,7 +46,9 @@ jobs:
               }
             ]'
           fi
-          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "matrix<<EOF" >> $GITHUB_OUTPUT
+          echo "$MATRIX" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
   build:
     needs: setup-matrix
