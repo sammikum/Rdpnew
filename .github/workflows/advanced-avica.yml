@@ -35,9 +35,15 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --quiet requests pyautogui telegraph
+          try {
+            python -m pip install --quiet requests pyautogui telegraph
+            Write-Host "✅ Python dependencies installed" -ForegroundColor Green
+          } catch {
+            Write-Host "❌ Error installing dependencies: $_" -ForegroundColor Red
+            exit 1
+          }
         shell: pwsh
-        continue-on-error: true  # Proceed even if pip fails
+        continue-on-error: true  # Proceed to allow debugging
 
       - name: Create Fallback Scripts
         run: |
@@ -48,7 +54,7 @@ import requests
 import pyautogui
 import telegraph
 print('Fallback setup.py: Configure Avica and generate GoFile link here')
-# Add actual setup logic or fetch from a reliable source
+# Placeholder: Add logic to configure Avica, generate GoFile link
 "@
           }
           if (-Not (Test-Path ./repo/show.bat)) {
@@ -70,18 +76,18 @@ goto loop
           $downloadUrlBase = "https://gitlab.com/userup908/my-rdp/-/raw/main/"
           try {
             if (Test-Path ./repo/setup.py) {
-              Copy-Item ./repo/setup.py -Destination .
+              Copy-Item ./repo/setup.py -Destination . -ErrorAction Stop
             } else {
               Invoke-WebRequest -Uri "${downloadUrlBase}setup.py" -OutFile "setup.py" -ErrorAction Stop
             }
             Invoke-WebRequest -Uri "https://download.avica.com/AvicaLite_v${env:AVICA_VERSION}.exe" -OutFile "Avica_setup.exe" -ErrorAction Stop
             if (Test-Path ./repo/show.bat) {
-              Copy-Item ./repo/show.bat -Destination .
+              Copy-Item ./repo/show.bat -Destination . -ErrorAction Stop
             } else {
               Invoke-WebRequest -Uri "${downloadUrlBase}show.bat" -OutFile "show.bat" -ErrorAction Stop
             }
             if (Test-Path ./repo/loop.bat) {
-              Copy-Item ./repo/loop.bat -Destination .
+              Copy-Item ./repo/loop.bat -Destination . -ErrorAction Stop
             } else {
               Invoke-WebRequest -Uri "${downloadUrlBase}loop.bat" -OutFile "loop.bat" -ErrorAction Stop
             }
