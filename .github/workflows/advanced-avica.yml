@@ -80,19 +80,26 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Install dependencies
+      - name: Install dependencies (Windows)
+        if: matrix.os == 'windows-latest'
         run: |
           pip install --quiet requests pyautogui telegraph
-        shell: "${{ matrix.os == 'windows-latest' ? 'pwsh' : 'bash' }}"
+        shell: pwsh
+
+      - name: Install dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          pip install --quiet requests pyautogui telegraph
+        shell: bash
 
       - name: Download Avica and Scripts
+        if: matrix.os == 'windows-latest'
         run: |
           $downloadUrlBase = "https://gitlab.com/userup908/my-rdp/-/raw/main/"
           if (Test-Path ./repo/setup.py) { Copy-Item ./repo/setup.py . } else { Invoke-WebRequest -Uri "${downloadUrlBase}setup.py" -OutFile "setup.py" }
           Invoke-WebRequest -Uri "https://download.avica.com/AvicaLite_v${env:AVICA_VERSION}.exe" -OutFile "Avica_setup.exe"
           if (Test-Path ./repo/show.bat) { Copy-Item ./repo/show.bat . } else { Invoke-WebRequest -Uri "${downloadUrlBase}show.bat" -OutFile "show.bat" }
           if (Test-Path ./repo/loop.bat) { Copy-Item ./repo/loop.bat . } else { Invoke-WebRequest -Uri "${downloadUrlBase}loop.bat" -OutFile "loop.bat" }
-        if: matrix.os == 'windows-latest'
         shell: pwsh
 
       - name: Enable RDP (Windows)
@@ -117,17 +124,17 @@ jobs:
           RDP_PASSWORD: ${{ env.RDP_PASSWORD }}
 
       - name: Start Avica Service
+        if: matrix.os == 'windows-latest'
         run: |
           Write-Host "⚡ Starting Avica..." -ForegroundColor Yellow
           python -c "import pyautogui; pyautogui.FAILSAFE = False; pyautogui.click(897, 64, duration=2)" 2>$null || true
           Start-Process "Avica_setup.exe" -Wait:$false
           Start-Sleep -Seconds 10
           python setup.py
-        if: matrix.os == 'windows-latest'
         shell: pwsh
 
-      - name: Display Connection Info
-        if: always()  # Run even if previous fails
+      - name: Display Connection Info (Windows)
+        if: matrix.os == 'windows-latest'
         run: |
           Write-Host "
           ╔══════════════════════════════════════╗
@@ -143,11 +150,30 @@ jobs:
           
           For Ubuntu: Connect via xRDP on port 3389
           " -ForegroundColor Cyan
-        shell: "${{ matrix.os == 'windows-latest' ? 'pwsh' : 'bash' }}"
+        shell: pwsh
+
+      - name: Display Connection Info (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          echo "
+          ╔══════════════════════════════════════╗
+          ║        ADVANCED AVICA/XRDP RDP       ║  
+          ╚══════════════════════════════════════╝
+          
+          📱 Telegram: @TheNetworkZoneOfficial
+          👨‍💻 Credits: @PiroYadav & @TheYadavNetwork
+          
+          OS: ${{ matrix.os }}
+          Password: ${{ env.RDP_PASSWORD }}
+          GoFile Link: (Check logs from setup.py)
+          
+          For Ubuntu: Connect via xRDP on port 3389
+          "
+        shell: bash
 
       - name: Run Display Script
-        run: cmd /c show.bat
         if: matrix.os == 'windows-latest'
+        run: cmd /c show.bat
 
       - name: Keep Session Active
         if: always() && matrix.os == 'windows-latest'
