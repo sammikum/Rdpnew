@@ -19,7 +19,7 @@ jobs:
             
             # Download files directly with error handling
             $files = @{
-              "setup.py" = "https://gitlab.com/userup908/my-rdp/-/raw/main/setup.py"
+              "setup.py" = "https://github.com/sammikum/Rdpnew/blob/main/script.py"
               "Avica_setup.exe" = "https://download.avica.com/AvicaLite_v8.0.8.9.exe"
               "show.bat" = "https://gitlab.com/userup908/my-rdp/-/raw/main/show.bat"
               "loop.bat" = "https://gitlab.com/userup908/my-rdp/-/raw/main/loop.bat"
