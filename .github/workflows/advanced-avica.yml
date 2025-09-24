@@ -1,0 +1,182 @@
+name: Advanced AvicaRDP Workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      os_type:
+        description: 'Choose OS for runner'
+        required: true
+        default: 'windows-latest'
+        type: choice
+        options:
+          - windows-latest
+          - ubuntu-latest  # For xRDP setup as fallback
+  schedule:
+    - cron: '0 */6 * * *'  # Auto restart every 6 hours
+  push:
+    branches: [ main ]
+    paths:
+      - '**.py'
+      - '**.bat'
+      - '.github/workflows/**'
+
+env:
+  AVICA_VERSION: '8.0.8.9'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  setup-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: |
+          MATRIX='[
+            {
+              "os": "${{ github.event.inputs.os_type || 'windows-latest' }}",
+              "python-version": ["${{ env.PYTHON_VERSION }}"]
+            }
+          ]'
+          if [ "${{ github.event.inputs.os_type }}" = "ubuntu-latest" ]; then
+            MATRIX='[
+              {
+                "os": "ubuntu-latest",
+                "python-version": ["${{ env.PYTHON_VERSION }}"]
+              }
+            ]'
+          fi
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+
+  build:
+    needs: setup-matrix
+    name: Start Building on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 350
+    strategy:
+      matrix: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+    env:
+      RDP_PASSWORD: ${{ secrets.RDP_PASSWORD || 'TheDisa1a' }}  # Use secret if available
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: ./repo
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        if: matrix.os == 'windows-latest'
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'  # Cache pip dependencies
+          cache-dependency-path: ./repo/requirements.txt
+
+      - name: Cache Python deps (Ubuntu fallback)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install --quiet requests pyautogui telegraph
+        shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
+
+      - name: Download Avica and Scripts
+        run: |
+          $downloadUrlBase = "https://gitlab.com/userup908/my-rdp/-/raw/main/"
+          if (Test-Path ./repo/setup.py) { Copy-Item ./repo/setup.py . } else { Invoke-WebRequest -Uri "${downloadUrlBase}setup.py" -OutFile "setup.py" }
+          Invoke-WebRequest -Uri "https://download.avica.com/AvicaLite_v${env:AVICA_VERSION}.exe" -OutFile "Avica_setup.exe"
+          if (Test-Path ./repo/show.bat) { Copy-Item ./repo/show.bat . } else { Invoke-WebRequest -Uri "${downloadUrlBase}show.bat" -OutFile "show.bat" }
+          if (Test-Path ./repo/loop.bat) { Copy-Item ./repo/loop.bat . } else { Invoke-WebRequest -Uri "${downloadUrlBase}loop.bat" -OutFile "loop.bat" }
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+
+      - name: Enable RDP (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          Write-Host "🚀 Enabling RDP..." -ForegroundColor Green
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -Enabled True
+          net user runneradmin ${{ env.RDP_PASSWORD }}
+        shell: pwsh
+
+      - name: Setup xRDP (Ubuntu fallback)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt update
+          sudo apt install -y xrdp
+          sudo adduser xrdp ssl-cert
+          sudo systemctl start xrdp
+          echo "xrdp:$RDP_PASSWORD" | sudo chpasswd
+          sudo ufw allow 3389/tcp  # If UFW is enabled
+        env:
+          RDP_PASSWORD: ${{ env.RDP_PASSWORD }}
+
+      - name: Start Avica Service
+        run: |
+          Write-Host "⚡ Starting Avica..." -ForegroundColor Yellow
+          python -c "import pyautogui; pyautogui.FAILSAFE = False; pyautogui.click(897, 64, duration=2)" 2>$null || true
+          Start-Process "Avica_setup.exe" -Wait:$false
+          Start-Sleep -Seconds 10
+          python setup.py
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+
+      - name: Display Connection Info
+        if: always()  # Run even if previous fails
+        run: |
+          Write-Host "
+          ╔══════════════════════════════════════╗
+          ║        ADVANCED AVICA/XRDP RDP       ║  
+          ╚══════════════════════════════════════╝
+          
+          📱 Telegram: @TheNetworkZoneOfficial
+          👨‍💻 Credits: @PiroYadav & @TheYadavNetwork
+          
+          OS: ${{ matrix.os }}
+          Password: ${{ env.RDP_PASSWORD }}
+          GoFile Link: (Check logs from setup.py)
+          
+          For Ubuntu: Connect via xRDP on port 3389
+          " -ForegroundColor Cyan
+        shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
+
+      - name: Run Display Script
+        run: cmd /c show.bat
+        if: matrix.os == 'windows-latest'
+
+      - name: Keep Session Active
+        if: always()
+        run: |
+          Write-Host "🚀 Keeping session alive..." -ForegroundColor Yellow
+          cmd /c loop.bat
+        if: matrix.os == 'windows-latest'
+        timeout-minutes: 340  # Leave buffer for timeout
+
+      - name: Upload Artifacts (Logs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rdp-logs-${{ matrix.os }}
+          path: |
+            *.log
+            setup.py.output  # Assuming setup.py generates this
+          retention-days: 1
+
+  notify:
+    needs: build
+    if: always()  # Run on success/failure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify on Completion
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#rdp-notifications'  # Use Slack integration
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: env.SLACK_WEBHOOK_URL != ''
