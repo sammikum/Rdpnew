@@ -3,7 +3,7 @@ import time
 import requests
 import os
 
-# Initial delay to allow system and UI readiness
+# Initial delay for system readiness
 time.sleep(40)
 
 def click_button(image_path, retries=3, interval=5, confidence=0.8):
@@ -63,12 +63,16 @@ if not click_button('launch_avica.png'):
 # Step 3: Click the "Later Update" button if shown (image file: 'later_update.png')
 click_button('later_update.png', retries=2)
 
-# Step 4: Click the Allow Remote Access button multiple times (image file: 'allow_rdp.png')
-for _ in range(4):
-    if click_button('allow_rdp.png', retries=1):
-        time.sleep(1)
-    else:
-        print("Allow Remote Access button may not be present.")
+# Step 4: Click the Allow Remote Access button repeatedly until gone or max attempts reached
+max_attempts = 8
+attempts = 0
+while attempts < max_attempts:
+    clicked = click_button('allow_rdp.png', retries=1)
+    if not clicked:
+        print("Allow Remote Access button not found, assuming granted or no longer needed.")
+        break
+    time.sleep(1)  # wait for UI to update
+    attempts += 1
 
 # Step 5: Launch Avica explicitly with corrected path
 avica_path = r"C:\Program Files (x86)\Avica\Avica.exe"
@@ -79,7 +83,7 @@ if os.path.exists(avica_path):
 else:
     print(f"Avica executable not found at {avica_path}")
 
-# Re-click Allow Remote Access after launch
+# Re-click Allow Remote Access after launch, once
 click_button('allow_rdp.png')
 
 time.sleep(10)
