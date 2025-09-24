@@ -1,56 +1,73 @@
 name: AvicaRDP
+
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 */6 * * *'  # every 6 hours
+
 jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 350
+
     steps:
       - name: Checkout repository content
         uses: actions/checkout@v4
+
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.x'
+
       - name: Download and install Avica silently
         shell: pwsh
         run: |
           $dest = "$env:TEMP\AvicaLite_v8.0.8.9.exe"
+
           Invoke-WebRequest -Uri "https://download.avica.com/AvicaLite_v8.0.8.9.exe" -OutFile $dest -UseBasicParsing -ErrorAction Stop
+
           if ((Test-Path $dest) -and ((Get-Item $dest).Length -gt 5MB)) {
-            Write-Host "Avica installer downloaded."
+              Write-Host "Avica installer downloaded."
           } else {
-            throw "Download failed or file too small."
+              throw "Download failed or file too small."
           }
+
           $installed = $false
           $argumentsList = @("/S", "/silent", "/quiet", "/VERYSILENT", "/exenoui")
           foreach ($args in $argumentsList) {
-            try {
-              Write-Host "Trying silent install with $args"
-              $p = Start-Process -FilePath $dest -ArgumentList $args -Wait -PassThru
-              if ($p.ExitCode -eq 0) { $installed = $true; break }
-            } catch { Write-Host "Failed attempt $args: $($_.Exception.Message)" }
+              try {
+                  Write-Host "Trying silent install with $args"
+                  $p = Start-Process -FilePath $dest -ArgumentList $args -Wait -PassThru
+                  if ($p.ExitCode -eq 0) { $installed = $true; break }
+              } catch {
+                  Write-Host "Failed attempt ${args}: $($_.Exception.Message)"
+              }
           }
+
           if (-not $installed) {
-            Write-Host "Silent install failed, launching interactive installer."
-            Start-Process -FilePath $dest
-            Start-Sleep -Seconds 15
+              Write-Host "Silent install failed, launching interactive installer."
+              Start-Process -FilePath $dest
+              Start-Sleep -Seconds 15
           }
+
       - name: Install Python dependencies
         run: python -m pip install --quiet requests pyautogui
+
       - name: Download supporting files
         run: |
           Invoke-WebRequest -Uri "https://gitlab.com/userup908/my-rdp/-/raw/main/show.bat" -OutFile "show.bat"
           Invoke-WebRequest -Uri "https://gitlab.com/userup908/my-rdp/-/raw/main/loop.bat" -OutFile "loop.bat"
-          # Download your button images here or ensure they are included in repo
+          # Ensure button images needed by pyautogui are available here or in repo
+
       - name: Download automation script
         run: |
           Invoke-WebRequest -Uri "https://github.com/sammikum/Rdpnew/blob/main/script.py" -OutFile "script.py"
+
       - name: Run automation script
         run: python automate_avica.py
+
       - name: Show connection info
         run: cmd /c show.bat
+
       - name: Keep session active
         run: cmd /c loop.bat
