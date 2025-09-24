@@ -3,32 +3,25 @@ import time
 import requests
 import os
 
-# Initial delay for system readiness
+# Wait for system/UI readiness
 time.sleep(40)
 
 def click_button(image_path, retries=3, interval=5, confidence=0.8):
-    """
-    Try clicking the button identified by an image on screen.
-    Retries with delay if button not found.
-    """
     for attempt in range(retries):
         coords = pag.locateCenterOnScreen(image_path, confidence=confidence)
         if coords:
-            print(f"Found button {image_path} at {coords}, clicking...")
+            print(f"Found button '{image_path}' at {coords}, clicking...")
             pag.click(coords.x, coords.y, duration=1)
             return True
         else:
-            print(f"Button {image_path} not found. Retry {attempt + 1} of {retries}...")
+            print(f"Button '{image_path}' not found. Retry {attempt+1} of {retries}...")
             time.sleep(interval)
-    print(f"Failed to find button {image_path} after {retries} retries.")
+    print(f"Failed to find button '{image_path}' after {retries} retries.")
     return False
 
 img_filename = 'NewAvicaRemoteID.png'
 
 def upload_image_to_gofile(img_filename):
-    """
-    Upload screenshot image to GoFile.io and log the download page URL.
-    """
     url = 'https://store1.gofile.io/uploadFile'
     try:
         with open(img_filename, 'rb') as img_file:
@@ -49,46 +42,42 @@ def upload_image_to_gofile(img_filename):
         return None
 
 print("Waiting for system readiness...")
-time.sleep(10)  # Wait to focus target app
+time.sleep(10)
 
-# Step 1: Click install button (image file: 'install_button.png')
+# Step 1: Click Install button
 if not click_button('install_button.png', retries=3, interval=15):
     print("Install button action failed; exiting.")
     exit(1)
 
-# Step 2: Click to launch Avica (image file: 'launch_avica.png')
+# Step 2: Click Launch Avica button
 if not click_button('launch_avica.png'):
     print("Launch Avica button not found; continuing anyway.")
 
-# Step 3: Click the "Later Update" button if shown (image file: 'later_update.png')
+# Step 3: Click "Later Update" button (optional)
 click_button('later_update.png', retries=2)
 
-# Step 4: Click the Allow Remote Access button repeatedly until gone or max attempts reached
+# Step 4: Click Allow Remote Access button repeatedly until it's gone or max attempts
 max_attempts = 8
-attempts = 0
-while attempts < max_attempts:
-    clicked = click_button('allow_rdp.png', retries=1)
-    if not clicked:
-        print("Allow Remote Access button not found, assuming granted or no longer needed.")
+for attempt in range(max_attempts):
+    if not click_button('allow_rdp.png', retries=1):
+        print("Allow Remote Access button not found; assuming granted or not present.")
         break
-    time.sleep(1)  # wait for UI to update
-    attempts += 1
+    time.sleep(1)
 
-# Step 5: Launch Avica explicitly with corrected path
+# Step 5: Launch Avica executable explicitly
 avica_path = r"C:\Program Files (x86)\Avica\Avica.exe"
 if os.path.exists(avica_path):
-    print(f"Launching Avica from {avica_path}")
     os.system(f'"{avica_path}"')
     time.sleep(5)
 else:
     print(f"Avica executable not found at {avica_path}")
 
-# Re-click Allow Remote Access after launch, once
+# Re-click Allow Remote Access once after launch
 click_button('allow_rdp.png')
 
 time.sleep(10)
 
-# Take screenshot and upload to GoFile
+# Take screenshot and upload to GoFile.io
 pag.screenshot().save(img_filename)
 gofile_link = upload_image_to_gofile(img_filename)
 if gofile_link:
