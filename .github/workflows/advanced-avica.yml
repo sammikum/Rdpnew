@@ -83,7 +83,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --quiet requests pyautogui telegraph
-        shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
+        shell: ${{ matrix.os == 'windows-latest' ? 'pwsh' : 'bash' }}
 
       - name: Download Avica and Scripts
         run: |
@@ -143,7 +143,7 @@ jobs:
           
           For Ubuntu: Connect via xRDP on port 3389
           " -ForegroundColor Cyan
-        shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
+        shell: ${{ matrix.os == 'windows-latest' ? 'pwsh' : 'bash' }}
 
       - name: Run Display Script
         run: cmd /c show.bat
@@ -173,10 +173,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Notify on Completion
+        if: env.SLACK_WEBHOOK_URL != ''
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
           channel: '#rdp-notifications'  # Use Slack integration
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        if: env.SLACK_WEBHOOK_URL != ''
