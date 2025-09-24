@@ -83,7 +83,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --quiet requests pyautogui telegraph
-        shell: ${{ matrix.os == 'windows-latest' ? 'pwsh' : 'bash' }}
+        shell: "${{ matrix.os == 'windows-latest' ? 'pwsh' : 'bash' }}"
 
       - name: Download Avica and Scripts
         run: |
@@ -143,18 +143,17 @@ jobs:
           
           For Ubuntu: Connect via xRDP on port 3389
           " -ForegroundColor Cyan
-        shell: ${{ matrix.os == 'windows-latest' ? 'pwsh' : 'bash' }}
+        shell: "${{ matrix.os == 'windows-latest' ? 'pwsh' : 'bash' }}"
 
       - name: Run Display Script
         run: cmd /c show.bat
         if: matrix.os == 'windows-latest'
 
       - name: Keep Session Active
-        if: always()
+        if: always() && matrix.os == 'windows-latest'
         run: |
           Write-Host "🚀 Keeping session alive..." -ForegroundColor Yellow
           cmd /c loop.bat
-        if: matrix.os == 'windows-latest'
         timeout-minutes: 340  # Leave buffer for timeout
 
       - name: Upload Artifacts (Logs)
