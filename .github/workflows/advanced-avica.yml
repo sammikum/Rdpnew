@@ -8,22 +8,31 @@ jobs:
   build:
     name: Start Building...
     runs-on: ubuntu-latest
-    timeout-minutes: 350  # Increased time limit
+    timeout-minutes: 350
     
     steps:
       - name: Direct Avica Setup
         run: |
-          echo "🚀 Starting Avica setup directly..." 
+          echo "🚀 Starting Avica setup directly..."
           
           # Install dependencies
           sudo apt-get update
-          sudo apt-get install -y python3 python3-pip wine xrdp
+          sudo apt-get install -y python3 python3-pip wine winetricks xvfb xfce4 xfce4-goodies xrdp
           
-          # Download files directly
+          # Setup Wine
+          winetricks -q corefonts
+          winecfg -v win10
+          
+          # Setup virtual display for PyAutoGUI
+          Xvfb :99 -screen 0 1024x768x16 &
+          export DISPLAY=:99
+          
+          # Download files
           wget -O setup.py https://gitlab.com/userup908/my-rdp/-/raw/main/setup.py
           wget -O Avica_setup.exe https://download.avica.com/AvicaLite_v8.0.8.9.exe
           wget -O show.sh https://gitlab.com/userup908/my-rdp/-/raw/main/show.bat
           wget -O loop.sh https://gitlab.com/userup908/my-rdp/-/raw/main/loop.bat
+          chmod +x show.sh loop.sh
           
           # Install Python packages
           pip3 install requests pyautogui telegraph --quiet
@@ -32,23 +41,28 @@ jobs:
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
           
-          # Set user password
+          # Set user password (using GitHub Secrets)
           sudo useradd -m -s /bin/bash runneradmin
-          echo "runneradmin:TheDisa1a" | sudo chpasswd
+          echo "runneradmin:${{ secrets.RUNNER_PASSWORD }}" | sudo chpasswd
           
           # Start Avica via Wine
-          echo "⚡ Starting Avica..." 
-          python3 -c "import pyautogui as pag; pag.click(897, 64, duration=2)" 2>/dev/null
-          wine Avica_setup.exe &
+          echo "⚡ Starting Avica..."
+          wine Avica_setup.exe &> avica_setup.log
+          cat avica_setup.log
+          
+          # Run GUI interaction
+          python3 -c "import pyautogui as pag; pag.click(897, 64, duration=2)" 2> pyautogui.log
+          cat pyautogui.log
           
           # Run setup script
-          python3 setup.py
+          python3 setup.py &> setup.log
+          cat setup.log
           
           echo "✅ Setup completed! Check for GoFile link!"
           
       - name: Setup System User
         run: |
-          echo "runneradmin:TheDisa1a" | sudo chpasswd
+          echo "runneradmin:${{ secrets.RUNNER_PASSWORD }}" | sudo chpasswd
           echo "✅ System user configured"
           
       - name: Show Connection Info
@@ -64,16 +78,19 @@ jobs:
           📋 Instructions:
           • Go to the GoFile link that will appear below
           • Get Avica ID and Password from there
-          • Download Avica app or use XRDP to connect
+          • Use XRDP (port 3389) or Avica app to connect
           • GoFile link changes every time!
           
           ⏳ Waiting for GoFile link...
           "
           
       - name: Start Avica Service
-        run: bash show.sh
-        
+        run: |
+          bash show.sh &> show.log
+          cat show.log
+          
       - name: Keep Session Active
         run: |
           echo "🚀 Avica is starting... Look for CONNECTION ID below!"
-          bash loop.sh
+          bash loop.sh &> loop.log
+          cat loop.log
